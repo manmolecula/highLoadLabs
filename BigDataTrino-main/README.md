@@ -1,13 +1,14 @@
-# BigDataTrino
+# BigDataTrino  
+**Лабораторная работа №4: Реализация ETL-процесса с использованием Trino**
 
-## Отчет о работе и инструкция
+---
+
+## Быстрый старт
 
 ### 1. Запуск docker-compose
-
-Из корня BigDataTrino-main: 
-
+Из корневой директории `BigDataTrino-main`:
 ```bash
-BigDataTrino-main> docker-compose up
+docker-compose up
 ```
 Если trino не успевает закончить инициализацию до активации скрипта, то увеличьте **sleep 10** в **CMD** в **command** сервиса **trino-pipeline-cli** до 20 и более.
 
