@@ -1,0 +1,80 @@
+version: "3"
+
+services:
+  
+  postgres:
+    image: postgres:16
+    container_name: pg16_highload
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: user
+      POSTGRES_DB: lab4_db_postgres
+    volumes:
+      - ./init_scripts/init_postgres.sql:/docker-entrypoint-initdb.d/init_postgres.sql
+      - ./init_data:/data
+    networks:
+      - lab4
+
+  
+  clickhouse:
+    image: yandex/clickhouse-server:latest
+    container_name: ch_highload
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./init_scripts/init_clickhouse.sql:/docker-entrypoint-initdb.d/init_clickhouse.sql
+      - ./init_data:/data
+    networks:
+      - lab4
+
+
+
+  trino:
+    image: trinodb/trino:latest
+    container_name: trino
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./properties:/etc/trino/catalog:ro
+    networks:
+      - lab4
+    depends_on:
+      - clickhouse
+      - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ui/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+
+  trino-pipeline-cli:
+    image: trinodb/trino:latest
+    depends_on:
+      trino:
+        condition: service_healthy
+    volumes:
+      - ./trino_scripts:/trino_sql_scripts
+    command: >
+      sh -c "
+        sleep 10 &&
+        trino --server trino:8080 --catalog clickhouse --schema default --user trino -f /trino_sql_scripts/01_create_schema.sql &&
+        trino --server trino:8080 --catalog clickhouse --schema default --user trino -f /trino_sql_scripts/02_fill_schema.sql &&
+        trino --server trino:8080 --catalog clickhouse --schema default --user trino -f /trino_sql_scripts/03_build_reports_ch.sql
+      "
+    networks:
+      - lab4
+
+
+volumes:
+  clickhouse_data:
+networks:
+  lab4:
+    driver: bridge
+
+

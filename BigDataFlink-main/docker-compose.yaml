@@ -1,0 +1,131 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: pg16_highload
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: user
+      POSTGRES_DB: lab3_db_postgres
+    volumes:
+      - ./postgres_init:/docker-entrypoint-initdb.d/
+      - ./init_data:/data
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - lab3
+
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.2
+    hostname: zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - lab3
+
+
+  kafka:
+    image: confluentinc/cp-kafka:7.3.2
+    hostname: kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    networks:
+      - lab3
+
+
+  jobmanager:
+    image: flink:1.17-scala_2.12-java11
+    hostname: jobmanager
+    container_name: jobmanager
+    ports:
+      - "8081:8081"
+    command: >
+      /bin/sh -c "
+      cp /opt/flink/usrlib/*.jar /opt/flink/lib/ &&
+      /docker-entrypoint.sh jobmanager
+      "
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+      - FLINK_PROPERTIES=jobmanager.rpc.address:jobmanager
+      
+    volumes:
+      - ./flink_job:/opt/flink/sql_job
+      - ./jars:/opt/flink/usrlib
+    networks:
+      - lab3
+    depends_on:
+      - kafka
+      - postgres
+
+  taskmanager:
+    image: flink:1.17-scala_2.12-java11
+    hostname: taskmanager
+    container_name: taskmanager
+    command: >
+      /bin/sh -c "
+      cp /opt/flink/usrlib/*.jar /opt/flink/lib/ &&
+      /docker-entrypoint.sh taskmanager
+      "
+    ports:
+      - "8082:8082"
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=jobmanager
+      # - FLINK_PROPERTIES=jobmanager.rpc.address:jobmanager 
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 10
+        parallelism.default: 1
+    volumes:
+      - ./flink_job:/opt/flink/sql_job
+      - ./jars:/opt/flink/usrlib
+    networks:
+      - lab3
+    depends_on:
+      - jobmanager
+
+  producer:
+    build:
+      context: ./producer
+    container_name: producer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DATA_DIR: /app/mock_data
+      KAFKA_TOPIC: source_events_v2
+      DELAY_MS: 0
+    volumes:
+      - ./init_data:/app/mock_data
+    depends_on:
+      - kafka
+    networks:
+      - lab3
+    profiles:
+      - producer_runner
+
+volumes:
+  postgres_data:
+
+networks:
+  lab3:
+    driver: bridge

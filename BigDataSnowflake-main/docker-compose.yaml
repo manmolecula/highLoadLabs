@@ -1,0 +1,19 @@
+version: "3"
+
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: pg16_highload
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: user
+      POSTGRES_DB: lab1_db
+    volumes:
+      - ./init_data:/data
+      - ./postgres_init:/docker-entrypoint-initdb.d/
+
+volumes:
+  postgres_data:
